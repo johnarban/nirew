@@ -1,4 +1,4 @@
-PRO JL_EXAMPLE, showplot=showplot, ps=ps
+PRO JL_EXAMPLE, showplot=showplot, ps=ps, star = star
 
   IF N_ELEMENTS(showplot) EQ 0 THEN showplot = 1
 
@@ -9,27 +9,19 @@ PRO JL_EXAMPLE, showplot=showplot, ps=ps
   std = MRDFITS('spec/J0727+0513_rest.fits',0)
   
   ; IRTF telluric corrected spectra (unmerged)
-  star = 'spec/J0455+0440W_tc.fits'
+  IF ~keyword_set(star) THEN $
+    star = 'spec/J0455+0440W_tc.fits'
+  
   ;star = '~/EPIC/proc/corrected.fits'
   data_tc = MRDFITS(star, 0, hdr)
   orders = STRSPLIT(SXPAR(hdr,'ORDERS'),',',/extract)
   
-  ; K-band specifics
-  order = 0
-  wrange = [2.18, 2.41] ;optional
-  ;pixscale = 0.00053752800 ;order dependent
-  pixscale = SXPAR(hdr, STRING(orders[order],FORMAT='("DISPO",I02)')) ; assume IRTF standard header
   
   ; Determine spectral type using N14 relation
   ;merged = mrdfits('~/Dropbox/Merged-New-JJ1629.fits',0)
   index = water_index(data_tc[*,0,0],data_tc[*,1,0])
   print, 'Water index: ',index
-  
-  ; shift to rest
-  ERN_RV, data_tc[*,*,order], std, wrange=wrange, pixscale=pixscale, rv0=rv0, ccorr=1
-  print,''
-  print,'Radial Velocity (km/s): ',rv0
-  print,''
+
   ; Run for all lines
   FOR k=0,N_ELEMENTS(lineall)-1 DO BEGIN
   
@@ -47,8 +39,16 @@ PRO JL_EXAMPLE, showplot=showplot, ps=ps
         4:wrange = [0.82, 0.93]
         else: wrange = [MIN(data_tc[*,0,order]),MAX(data_tc[*,0,order])]
       ENDCASE
-      lambda = data_tc[*,0,order] - rv0/(3.*10.^5)*data_tc[*,0,order]
       IF (continuum[0] ge min(wrange)) and (continuum[3] le max(wrange)) THEN BEGIN
+        
+        notnan = where(data_tc[*,1,order] eq data_tc[*,1,order])
+        
+        pixscale = SXPAR(hdr, STRING(orders[order],FORMAT='("DISPO",I02)')) ; assume IRTF standard header
+        ERN_RV, data_tc[notnan,*,order], std[*,*,order], wrange=wrange, pixscale=pixscale, rv0=rv0, ccorr=1
+        
+        lambda = data_tc[*,0,order] - rv0/(2.998*10.^5)*data_tc[*,0,order]
+        print, 'RV for Order ',orders[order],': ',rv0," km/s"
+
         print, lineall[k], ' in Order ',orders[order]
         flux = data_tc[*,1,order]
         eflux = data_tc[*,2,order]
@@ -91,11 +91,12 @@ PRO JL_EXAMPLE, showplot=showplot, ps=ps
           oplot, [continuum[1,1],continuum[1,1]],[0,100],color=3,linestyle=2
           oplot, [continuum[1,0],continuum[1,0]],[0,100],color=3,linestyle=2
           oplot, lambda, pseudo, color=3
-          IF PS THEN BEGIN
+          IF KEYWORD_SET(ps) THEN BEGIN
             device,/close
             set_plot,'X'
-          ENDIF
-          ;wait,3
+          ENDIF ELSE BEGIN
+            wait,3
+          ENDELSE
         ENDIF
       ENDIF
     ENDFOR
